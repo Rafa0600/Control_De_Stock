@@ -1,0 +1,1286 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mikra - Control de Stock</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg: #1a2744;
+            --bg-card: #243554;
+            --bg-input: #1e3a5f;
+            --primary: #4facfe;
+            --success: #4ade80;
+            --warning: #fbbf24;
+            --danger: #f87171;
+            --purple: #a78bfa;
+            --text: #ffffff;
+            --text-secondary: #94a3b8;
+            --border: #3b5998;
+        }
+        
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            background: linear-gradient(180deg, #1a2744 0%, #0f172a 100%);
+            color: var(--text); 
+            min-height: 100vh; 
+            padding-bottom: 140px;
+        }
+        
+        .header { padding: 12px 16px; text-align: center; border-bottom: 1px solid var(--border); }
+        .header-title { font-size: 1.1em; font-weight: 700; color: var(--primary); }
+        .header-subtitle { font-size: 0.7em; color: var(--text-secondary); }
+        
+        .sync-bar {
+            display: flex; justify-content: center; align-items: center; gap: 8px;
+            padding: 8px 12px; background: var(--bg-card); border-bottom: 1px solid var(--border);
+            font-size: 0.75em; flex-wrap: wrap;
+        }
+        .sync-status { display: flex; align-items: center; gap: 6px; }
+        .sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); }
+        .sync-dot.loading { background: var(--warning); animation: pulse 1s infinite; }
+        .sync-dot.error { background: var(--danger); }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        
+        .sync-btn {
+            background: var(--primary); border: none; color: white;
+            padding: 5px 12px; border-radius: 12px; font-size: 0.9em; font-weight: 600; cursor: pointer;
+        }
+        
+        .container { max-width: 800px; margin: 0 auto; padding: 10px; }
+        
+        .search-container { position: relative; margin-bottom: 10px; }
+        .search-box {
+            background: var(--bg-input); border: 1px solid var(--border); border-radius: 12px;
+            padding: 12px 16px; display: flex; align-items: center; gap: 10px;
+        }
+        .search-box input {
+            flex: 1; background: none; border: none; color: var(--text); font-size: 15px; outline: none;
+        }
+        .search-box input::placeholder { color: var(--text-secondary); }
+        
+        .search-clear {
+            background: var(--danger); border: none; color: white; font-size: 0.9em;
+            cursor: pointer; padding: 6px 12px; border-radius: 8px; font-weight: 700; display: none;
+        }
+        .search-clear.show { display: block; }
+        
+        .autocomplete {
+            position: absolute; top: 100%; left: 0; right: 0;
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 0 0 12px 12px; max-height: 300px; overflow-y: auto; z-index: 100; display: none;
+        }
+        .autocomplete.show { display: block; }
+        .autocomplete-item {
+            padding: 12px 16px; cursor: pointer; border-bottom: 1px solid var(--border);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .autocomplete-item:hover { background: var(--bg-input); }
+        .autocomplete-name { font-weight: 600; }
+        .autocomplete-stock { 
+            font-size: 0.8em; color: var(--success);
+            background: rgba(74, 222, 128, 0.2); padding: 2px 8px; border-radius: 10px;
+        }
+        
+        .filter-row { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+        .filter-chip {
+            padding: 6px 12px; background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 20px; font-size: 0.75em; font-weight: 600; color: var(--text-secondary); cursor: pointer;
+        }
+        .filter-chip:hover { border-color: var(--primary); color: var(--primary); }
+        .filter-chip.active { background: var(--primary); border-color: var(--primary); color: white; }
+        .filter-chip.stock.active { background: var(--success); border-color: var(--success); }
+        .filter-chip.low.active { background: var(--warning); border-color: var(--warning); color: #1a2744; }
+        .filter-chip.out.active { background: var(--danger); border-color: var(--danger); }
+        .filter-chip.critical.active { background: var(--purple); border-color: var(--purple); }
+        
+        .filters-collapse {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 10px; margin-bottom: 10px; overflow: hidden;
+        }
+        .filters-header {
+            padding: 12px 16px; display: flex; justify-content: space-between;
+            align-items: center; cursor: pointer; font-size: 0.85em; font-weight: 600;
+        }
+        .filters-header:hover { background: var(--bg-input); }
+        .filters-arrow { transition: transform 0.3s; }
+        .filters-collapse.open .filters-arrow { transform: rotate(180deg); }
+        .filters-body { display: none; padding: 0 16px 16px; }
+        .filters-collapse.open .filters-body { display: block; }
+        .filter-section-title { font-size: 0.7em; color: var(--text-secondary); margin: 12px 0 8px; text-transform: uppercase; }
+        .filter-options { display: flex; flex-wrap: wrap; gap: 6px; }
+        .filter-opt {
+            padding: 5px 12px; background: var(--bg-input); border: 1px solid var(--border);
+            border-radius: 6px; font-size: 0.75em; color: var(--text-secondary); cursor: pointer;
+        }
+        .filter-opt:hover { border-color: var(--primary); color: var(--primary); }
+        .filter-opt.active { background: var(--primary); border-color: var(--primary); color: white; }
+        .active-filters { display: flex; gap: 6px; margin-left: 10px; }
+        .active-filter-tag { background: var(--primary); color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.7em; }
+        
+        .results-info { font-size: 0.8em; color: var(--text-secondary); padding: 8px 0; }
+        .results-info strong { color: var(--primary); }
+        
+        .product-list { display: flex; flex-direction: column; gap: 1px; background: var(--border); border-radius: 10px; overflow: hidden; }
+        
+        .color-divider {
+            background: var(--bg); padding: 8px 16px; font-size: 0.75em; font-weight: 700;
+            color: var(--primary); border-bottom: 2px solid var(--primary);
+            text-transform: uppercase; letter-spacing: 1px;
+        }
+        
+        .product-item {
+            background: var(--bg-card); padding: 14px 16px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .product-item:hover { background: var(--bg-input); }
+        .product-item.modified { background: rgba(167, 139, 250, 0.15); border-left: 3px solid var(--purple); }
+        .product-item.no-stock { opacity: 0.7; }
+        
+        .product-info { flex: 1; min-width: 0; cursor: pointer; }
+        .product-name { font-weight: 500; font-size: 0.75em; margin-bottom: 4px; color: var(--text-secondary); }
+        .product-meta { font-size: 1.1em; color: var(--text); font-weight: 700; margin-bottom: 3px; }
+        .product-sku { font-size: 0.85em; color: var(--primary); opacity: 1; font-weight: 600; }
+        
+        .product-right { display: flex; align-items: center; gap: 12px; }
+        
+        .product-stock { text-align: center; min-width: 70px; }
+        .stock-num { font-size: 1.5em; font-weight: 800; line-height: 1; }
+        .stock-num.high { color: var(--success); }
+        .stock-num.med { color: var(--warning); }
+        .stock-num.low { color: var(--danger); }
+        .stock-label { font-size: 0.65em; color: var(--text-secondary); margin-top: 2px; text-transform: uppercase; }
+        .stock-original { font-size: 0.7em; color: var(--text-secondary); margin-top: 2px; }
+        .stock-modified { font-size: 0.7em; color: var(--purple); margin-top: 2px; font-weight: 700; }
+        
+        /* CONTROLES DE STOCK */
+        .stock-controls {
+            display: flex; gap: 4px; align-items: center; flex-wrap: wrap;
+        }
+        
+        .stock-input-group {
+            display: flex; gap: 4px; align-items: center;
+            background: var(--bg-input); border-radius: 8px; padding: 4px;
+        }
+        
+        .stock-manual-input {
+            width: 50px; background: var(--bg); border: 1px solid var(--border);
+            color: var(--text); padding: 8px 6px; border-radius: 6px;
+            font-size: 0.9em; font-weight: 700; text-align: center;
+            outline: none;
+        }
+        
+        .stock-manual-input:focus {
+            border-color: var(--primary);
+        }
+        
+        .stock-set-btn {
+            background: var(--primary); border: none; color: white;
+            padding: 8px 12px; border-radius: 6px; font-size: 0.8em;
+            font-weight: 700; cursor: pointer;
+        }
+        .stock-set-btn:hover { background: #3a8cd9; }
+        
+        .stock-btn {
+            width: 40px; height: 40px; border-radius: 8px;
+            font-size: 1.2em; font-weight: 700; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s; border: none;
+        }
+        
+        .stock-btn:active { transform: scale(0.95); }
+        
+        .stock-btn.minus { 
+            background: #fbbf24; color: #1a2744;
+        }
+        .stock-btn.minus:hover { 
+            background: #f59e0b; 
+        }
+        
+        .stock-btn.plus { 
+            background: #4ade80; color: #1a2744;
+        }
+        .stock-btn.plus:hover { 
+            background: #22c55e; 
+        }
+        
+        .stock-btn.zero { 
+            background: #f87171; color: white;
+        }
+        .stock-btn.zero:hover { 
+            background: #ef4444; 
+        }
+        
+        /* ============ MOBILE LAYOUT ============ */
+        .mobile-edit-btn {
+            display: none;
+            width: 36px; height: 36px; border-radius: 8px;
+            background: var(--bg-input); border: 1px solid var(--border);
+            color: var(--text-secondary); font-size: 1.1em; cursor: pointer;
+            align-items: center; justify-content: center;
+        }
+        .mobile-edit-btn:hover { background: var(--primary); border-color: var(--primary); color: white; }
+        .mobile-edit-btn.active { background: var(--primary); border-color: var(--primary); color: white; }
+        
+        .stock-controls-panel {
+            display: none;
+            padding: 12px 16px 14px;
+            background: rgba(79, 172, 254, 0.08);
+            border-top: 1px solid var(--border);
+            gap: 10px;
+            align-items: center;
+            justify-content: center;
+            animation: slideDown 0.2s ease;
+        }
+        .stock-controls-panel.show { display: flex; }
+        
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .stock-controls-panel .stock-btn {
+            width: 48px; height: 48px; font-size: 1.4em;
+        }
+        
+        .stock-controls-panel .stock-input-group {
+            padding: 6px; border-radius: 10px;
+        }
+        
+        .stock-controls-panel .stock-manual-input {
+            width: 60px; padding: 10px 8px; font-size: 1em;
+        }
+        
+        .stock-controls-panel .stock-set-btn {
+            padding: 10px 16px; font-size: 0.9em;
+        }
+        
+        @media (max-width: 640px) {
+            .product-item {
+                flex-wrap: wrap;
+            }
+            .mobile-edit-btn {
+                display: flex;
+            }
+            /* Hide inline controls on mobile */
+            .stock-controls {
+                display: none !important;
+            }
+            /* Make product cards more compact */
+            .product-meta { font-size: 1.05em; }
+            .stock-num { font-size: 1.4em; }
+            .product-stock { min-width: 60px; }
+        }
+        
+        .pagination {
+            display: flex; justify-content: center; gap: 6px; margin-top: 12px; flex-wrap: wrap;
+        }
+        .page-btn {
+            background: var(--bg-card); border: 1px solid var(--border); color: var(--text);
+            padding: 8px 12px; border-radius: 8px; font-size: 0.85em; cursor: pointer;
+        }
+        .page-btn:hover:not(:disabled) { background: var(--bg-input); border-color: var(--primary); }
+        .page-btn.active { background: var(--primary); border-color: var(--primary); color: white; }
+        .page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+        
+        .empty { 
+            padding: 60px 20px; text-align: center; color: var(--text-secondary); 
+        }
+        .empty-icon { font-size: 3em; margin-bottom: 12px; opacity: 0.5; }
+        
+        .toast {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            background: var(--bg-card); color: var(--text); padding: 12px 24px;
+            border-radius: 12px; font-size: 0.9em; font-weight: 600;
+            z-index: 1000; opacity: 0; pointer-events: none;
+            transition: opacity 0.3s; border: 1px solid var(--border);
+        }
+        .toast.show { opacity: 1; }
+        .toast.success { background: var(--success); color: #1a2744; }
+        .toast.warning { background: var(--warning); color: #1a2744; }
+        .toast.error { background: var(--danger); color: white; }
+        
+        /* BARRA INFERIOR */
+        .bottom-bar {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: var(--bg-card); border-top: 2px solid var(--border);
+            padding: 12px; z-index: 100;
+        }
+        
+        .modifications-summary {
+            text-align: center; margin-bottom: 8px; font-size: 0.85em;
+        }
+        
+        .mod-count { color: var(--text-secondary); }
+        .mod-count strong { color: var(--purple); font-size: 1.3em; }
+        
+        .action-buttons {
+            display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;
+        }
+        
+        .action-btn {
+            flex: 1; min-width: 100px; padding: 10px 16px;
+            border: none; border-radius: 10px; font-weight: 700;
+            font-size: 0.85em; cursor: pointer; transition: all 0.2s;
+        }
+        
+        .action-btn:disabled {
+            opacity: 0.4; cursor: not-allowed;
+        }
+        
+        .action-btn.view {
+            background: var(--primary); color: white;
+        }
+        .action-btn.view:hover:not(:disabled) { background: #3a8cd9; }
+        
+        .action-btn.copy {
+            background: var(--success); color: #1a2744;
+        }
+        .action-btn.copy:hover:not(:disabled) { background: #3cbd6b; }
+        
+        .action-btn.clear {
+            background: var(--danger); color: white;
+        }
+        .action-btn.clear:hover:not(:disabled) { background: #e65e5e; }
+        
+        /* MODAL */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.7); z-index: 200;
+            display: flex; align-items: center; justify-content: center;
+            padding: 20px; opacity: 0; pointer-events: none;
+            transition: opacity 0.3s;
+        }
+        .modal-overlay.show { opacity: 1; pointer-events: auto; }
+        
+        .modal {
+            background: var(--bg-card); border-radius: 16px;
+            max-width: 600px; width: 100%; max-height: 80vh;
+            display: flex; flex-direction: column; border: 1px solid var(--border);
+        }
+        
+        .modal-header {
+            padding: 16px 20px; border-bottom: 1px solid var(--border);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        
+        .modal-title { font-weight: 700; font-size: 1.1em; }
+        
+        .modal-close {
+            background: none; border: none; color: var(--text);
+            font-size: 1.5em; cursor: pointer; padding: 0;
+            width: 30px; height: 30px; display: flex; align-items: center;
+            justify-content: center; border-radius: 6px;
+        }
+        .modal-close:hover { background: var(--bg-input); }
+        
+        .modal-body {
+            padding: 20px; overflow-y: auto; flex: 1;
+        }
+        
+        .mod-item {
+            background: var(--bg-input); padding: 12px; border-radius: 8px;
+            margin-bottom: 8px; border-left: 3px solid var(--purple);
+        }
+        
+        .mod-item-header {
+            font-weight: 700; margin-bottom: 4px;
+        }
+        
+        .mod-item-detail {
+            font-size: 0.85em; color: var(--text-secondary); margin-bottom: 2px;
+        }
+        
+        .mod-item-change {
+            margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
+            display: flex; justify-content: space-between; align-items: center;
+            font-size: 0.9em;
+        }
+        
+        .mod-old { color: var(--danger); text-decoration: line-through; }
+        .mod-new { color: var(--success); font-weight: 700; font-size: 1.2em; }
+        
+        /* PANTALLA DE CARGA */
+        .loading-screen {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: var(--bg); z-index: 300;
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; transition: opacity 0.3s;
+        }
+        .loading-screen.hidden { opacity: 0; pointer-events: none; }
+        .loading-spinner { font-size: 3em; margin-bottom: 20px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .loading-text { color: var(--text-secondary); font-size: 0.9em; }
+        .loading-error { 
+            color: var(--danger); margin-top: 20px; padding: 16px; 
+            background: rgba(248, 113, 113, 0.1); border-radius: 8px;
+            max-width: 400px; text-align: center; font-size: 0.85em;
+            display: none;
+        }
+        
+        .whatsapp-preview {
+            background: var(--bg); border-radius: 8px; padding: 12px;
+            font-family: monospace; font-size: 0.8em; white-space: pre-wrap;
+            margin-top: 12px; border: 1px solid var(--border);
+            max-height: 300px; overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="loading-screen" id="loadingScreen">
+        <div class="loading-spinner">⏳</div>
+        <div class="loading-text" id="loadingText">Cargando inventario...</div>
+        <div class="loading-error" id="loadingError"></div>
+    </div>
+
+    <div class="header">
+        <div class="header-title">📊 Control de Stock</div>
+        <div class="header-subtitle">Sistema de ajuste de inventario</div>
+    </div>
+
+    <div class="sync-bar">
+        <div class="sync-status">
+            <div class="sync-dot" id="syncDot"></div>
+            <span id="syncStatus">Cargando...</span>
+            <span id="syncTime"></span>
+        </div>
+        <button class="sync-btn" onclick="loadData()">🔄 Sync</button>
+        <button class="sync-btn" onclick="openSettings()" style="background: var(--purple);">⚙️</button>
+    </div>
+
+    <div class="container">
+        <div class="search-container">
+            <div class="search-box">
+                <span>🔍</span>
+                <input type="text" id="searchInput" placeholder="Buscar por nombre, SKU, color, ubicación...">
+                <button class="search-clear" id="searchClear" onclick="clearSearch()">✕ Borrar</button>
+            </div>
+            <div class="autocomplete" id="autocomplete"></div>
+        </div>
+
+        <div class="filter-row">
+            <div class="filter-chip active stock" data-stock="all">📦 Todos</div>
+            <div class="filter-chip stock" data-stock="yes">✅ Con Stock</div>
+            <div class="filter-chip critical" data-stock="critical">⚠️ Sin/Bajo Stock</div>
+            <div class="filter-chip low" data-stock="low">🔶 Bajo Stock</div>
+            <div class="filter-chip out" data-stock="no">❌ Sin Stock</div>
+            <div class="filter-chip" id="locationBtn" onclick="toggleLocationSearch()">📍 Ubicación</div>
+        </div>
+
+        <div class="location-search" id="locationSearch" style="display: none; margin-bottom: 10px;">
+            <div class="search-box" style="margin-bottom: 0;">
+                <span>📍</span>
+                <input type="text" id="locationInput" placeholder="Ej: 1000, 3000, 4000..." onkeyup="filterByLocation()">
+                <button class="search-clear show" onclick="clearLocationSearch()">✕</button>
+            </div>
+        </div>
+
+        <div class="filters-collapse" id="filtersCollapse">
+            <div class="filters-header" onclick="toggleFilters()">
+                <span>🎨 Color / 📏 Talle</span>
+                <div style="display:flex;align-items:center;">
+                    <div class="active-filters" id="activeFilters"></div>
+                    <span class="filters-arrow">▼</span>
+                </div>
+            </div>
+            <div class="filters-body">
+                <div class="filter-section-title">🎨 Colores</div>
+                <div class="filter-options" id="colorOptions"></div>
+                <div class="filter-section-title">📏 Talles</div>
+                <div class="filter-options" id="sizeOptions"></div>
+            </div>
+        </div>
+
+        <div class="results-info">
+            Mostrando <strong id="showingCount">0</strong> de <strong id="totalCount">0</strong> productos
+        </div>
+
+        <div class="product-list" id="productList"></div>
+        <div class="pagination" id="pagination"></div>
+    </div>
+
+    <div class="bottom-bar">
+        <div class="modifications-summary">
+            <div class="mod-count">
+                Modificaciones: <strong id="modCount">0</strong>
+            </div>
+        </div>
+        <div class="action-buttons">
+            <button class="action-btn view" onclick="viewModifications()" id="viewBtn" disabled>
+                📋 Ver Lista
+            </button>
+            <button class="action-btn copy" onclick="copyForWhatsApp()" id="copyBtn" disabled>
+                💬 Copiar WhatsApp
+            </button>
+            <button class="action-btn clear" onclick="clearModifications()" id="clearBtn" disabled>
+                🗑️ Limpiar
+            </button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+        <div class="modal" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title" id="modalTitle">Modificaciones</div>
+                <button class="modal-close" onclick="closeModal()">×</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        // EXACTAMENTE LA MISMA URL Y LÓGICA DEL ARCHIVO QUE FUNCIONA
+        const API_URL = 'https://script.google.com/macros/s/AKfycbxKNkORm0oMVtcODYJC3UNbxwn3_O9tP7_9DS9R35f2d6JZTAn6UBWrYH--Bp0Y_LWV/exec';
+        const SIZE_ORDER = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '2XL', '3XL'];
+        
+        let PRODUCTS = [];
+        let UNIQUE_ARTICLES = [];
+        
+        const state = {
+            search: '',
+            searchExact: false,
+            stock: 'all',
+            color: '',
+            size: '',
+            location: '',
+            filtered: [],
+            modifications: {}, // { productId: { oldStock: X, newStock: Y, product: {...} } }
+            page: 1,
+            pageSize: 50,
+            lowStockThreshold: 5 // Umbral configurable para bajo stock
+        };
+        
+        function $(id) { return document.getElementById(id); }
+        
+        function toggleFilters() { $('filtersCollapse').classList.toggle('open'); }
+        
+        function toggleLocationSearch() {
+            const isVisible = $('locationSearch').style.display !== 'none';
+            $('locationSearch').style.display = isVisible ? 'none' : 'block';
+            $('locationBtn').classList.toggle('active', !isVisible);
+            
+            if (!isVisible) {
+                $('locationInput').focus();
+            } else {
+                clearLocationSearch();
+            }
+        }
+        
+        function filterByLocation() {
+            state.location = $('locationInput').value.trim();
+            applyFilters();
+        }
+        
+        function clearLocationSearch() {
+            $('locationInput').value = '';
+            state.location = '';
+            $('locationSearch').style.display = 'none';
+            $('locationBtn').classList.remove('active');
+            applyFilters();
+        }
+        
+        // EXACTAMENTE LA MISMA FUNCIÓN DEL ARCHIVO QUE FUNCIONA
+        function updateUniqueArticles() {
+            const articles = {};
+            PRODUCTS.forEach(p => {
+                const name = p.titulo || p.articulo || '';
+                if (name) {
+                    if (!articles[name]) articles[name] = { name, totalStock: 0 };
+                    articles[name].totalStock += p.stock || 0;
+                }
+            });
+            UNIQUE_ARTICLES = Object.values(articles).sort((a, b) => b.totalStock - a.totalStock);
+        }
+        
+        function showAutocomplete(query) {
+            if (!query || query.length < 2) { $('autocomplete').classList.remove('show'); return; }
+            const q = query.toLowerCase();
+            const matches = UNIQUE_ARTICLES.filter(a => a.name.toLowerCase().includes(q)).slice(0, 10);
+            if (!matches.length) { $('autocomplete').classList.remove('show'); return; }
+            
+            $('autocomplete').innerHTML = matches.map(a => 
+                '<div class="autocomplete-item" data-name="' + a.name.replace(/"/g, '&quot;') + '">' +
+                '<span class="autocomplete-name">' + a.name + '</span>' +
+                '<span class="autocomplete-stock">' + a.totalStock + ' uds</span></div>'
+            ).join('');
+            $('autocomplete').classList.add('show');
+        }
+        
+        function clearSearch() {
+            $('searchInput').value = '';
+            state.search = ''; state.searchExact = false; state.color = ''; state.size = '';
+            $('searchClear').classList.remove('show');
+            $('autocomplete').classList.remove('show');
+            applyFilters();
+        }
+        
+        function applyFilters() {
+            let r = [...PRODUCTS];
+            
+            if (state.stock === 'yes') r = r.filter(p => p.stock > 0);
+            else if (state.stock === 'low') r = r.filter(p => p.stock > 0 && p.stock <= state.lowStockThreshold);
+            else if (state.stock === 'no') r = r.filter(p => p.stock === 0);
+            else if (state.stock === 'critical') r = r.filter(p => p.stock <= state.lowStockThreshold);
+            
+            if (state.search) {
+                const q = state.search.toLowerCase();
+                if (state.searchExact) {
+                    r = r.filter(p => (p.titulo?.toLowerCase() === q) || (p.articulo?.toLowerCase() === q));
+                } else {
+                    r = r.filter(p => 
+                        (p.codigo?.toLowerCase().includes(q)) || 
+                        (p.titulo?.toLowerCase().includes(q)) || 
+                        (p.articulo?.toLowerCase().includes(q)) ||
+                        (p.color?.toLowerCase().includes(q)) ||
+                        (p.ubicacion?.toLowerCase().includes(q))
+                    );
+                }
+            }
+            
+            if (state.location) {
+                const loc = state.location.toLowerCase();
+                r = r.filter(p => p.ubicacion?.toLowerCase().includes(loc));
+            }
+            
+            updateDynamicFilters(r);
+            if (state.color) r = r.filter(p => p.color === state.color);
+            if (state.size) r = r.filter(p => p.talle === state.size);
+            
+            r = sortProducts(r);
+            state.filtered = r; state.page = 1;
+            render(); updateActiveFilterTags();
+        }
+        
+        function updateActiveFilterTags() {
+            let tags = '';
+            if (state.color) tags += '<span class="active-filter-tag">' + state.color + '</span>';
+            if (state.size) tags += '<span class="active-filter-tag">Talle ' + state.size + '</span>';
+            $('activeFilters').innerHTML = tags;
+        }
+        
+        function updateDynamicFilters(results) {
+            const colors = [...new Set(results.map(p => p.color).filter(Boolean))].sort();
+            const sizes = [...new Set(results.map(p => p.talle).filter(Boolean))];
+            sizes.sort((a, b) => {
+                const numA = parseInt(a), numB = parseInt(b);
+                if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+                const idxA = SIZE_ORDER.indexOf(a.toUpperCase());
+                const idxB = SIZE_ORDER.indexOf(b.toUpperCase());
+                if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+                return a.localeCompare(b);
+            });
+            
+            $('colorOptions').innerHTML = '<div class="filter-opt' + (!state.color ? ' active' : '') + '" data-color="">Todos</div>' +
+                colors.map(c => '<div class="filter-opt' + (state.color === c ? ' active' : '') + '" data-color="' + c + '">' + c + '</div>').join('');
+            
+            $('sizeOptions').innerHTML = '<div class="filter-opt' + (!state.size ? ' active' : '') + '" data-size="">Todos</div>' +
+                sizes.map(s => '<div class="filter-opt' + (state.size === s ? ' active' : '') + '" data-size="' + s + '">' + s + '</div>').join('');
+        }
+        
+        // EXACTAMENTE LA MISMA FUNCIÓN DEL ARCHIVO QUE FUNCIONA
+        function sortProducts(products) {
+            return products.sort((a, b) => {
+                const colorA = (a.color || '').toLowerCase();
+                const colorB = (b.color || '').toLowerCase();
+                if (colorA !== colorB) return colorA.localeCompare(colorB);
+                
+                const sizeA = a.talle || '', sizeB = b.talle || '';
+                const numA = parseInt(sizeA), numB = parseInt(sizeB);
+                if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+                
+                const idxA = SIZE_ORDER.indexOf(sizeA.toUpperCase());
+                const idxB = SIZE_ORDER.indexOf(sizeB.toUpperCase());
+                if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+                if (idxA !== -1) return -1;
+                if (idxB !== -1) return 1;
+                return sizeA.localeCompare(sizeB);
+            });
+        }
+        
+        function render() {
+            const start = (state.page - 1) * state.pageSize;
+            const items = state.filtered.slice(start, start + state.pageSize);
+            const totalPages = Math.ceil(state.filtered.length / state.pageSize);
+            
+            $('showingCount').textContent = Math.min(start + state.pageSize, state.filtered.length);
+            $('totalCount').textContent = state.filtered.length.toLocaleString();
+            
+            if (!items.length) {
+                $('productList').innerHTML = '<div class="empty"><div class="empty-icon">🔍</div><div>No se encontraron productos</div></div>';
+                $('pagination').innerHTML = '';
+                return;
+            }
+            
+            let html = '', lastColor = null;
+            items.forEach(p => {
+                if (p.color !== lastColor) {
+                    html += '<div class="color-divider">🎨 ' + (p.color || 'Sin color') + '</div>';
+                    lastColor = p.color;
+                }
+                
+                const mod = state.modifications[p.id];
+                const isModified = !!mod;
+                const currentStock = isModified ? mod.newStock : p.stock;
+                const stockClass = currentStock > 5 ? 'high' : currentStock > 0 ? 'med' : 'low';
+                const noStock = currentStock === 0;
+                
+                let stockDisplay = '<div class="stock-num ' + stockClass + '">' + currentStock + '</div>';
+                
+                if (isModified) {
+                    stockDisplay += '<div class="stock-original">Original: ' + p.stock + '</div>';
+                    stockDisplay += '<div class="stock-modified">Modificado ✓</div>';
+                } else {
+                    stockDisplay += '<div class="stock-label">actual</div>';
+                }
+                
+                html += '<div class="product-item' + (isModified ? ' modified' : '') + (noStock ? ' no-stock' : '') + '" id="item-' + p.id + '">' +
+                    '<div class="product-info">' +
+                    '<div class="product-meta">' + (p.color || '-') + ' • Talle ' + (p.talle || '-') + '</div>' +
+                    '<div class="product-sku">SKU: ' + p.codigo + ' | Ubic: ' + (p.ubicacion || '-') + '</div>' +
+                    '<div class="product-name">' + (p.titulo || p.articulo || '-') + '</div></div>' +
+                    '<div class="product-right">' +
+                    '<div class="product-stock">' + stockDisplay + '</div>' +
+                    '<div class="stock-controls">' +
+                    '<button class="stock-btn minus" onclick="modifyStock(' + p.id + ', -1, event)">−</button>' +
+                    '<button class="stock-btn plus" onclick="modifyStock(' + p.id + ', 1, event)">+</button>' +
+                    '<button class="stock-btn zero" onclick="setStockZero(' + p.id + ', event)">⊘</button>' +
+                    '<div class="stock-input-group">' +
+                    '<input type="number" class="stock-manual-input" id="manual-' + p.id + '" placeholder="' + currentStock + '" min="0">' +
+                    '<button class="stock-set-btn" onclick="setManualStock(' + p.id + ', event)">✓</button>' +
+                    '</div></div>' +
+                    '<button class="mobile-edit-btn" onclick="toggleMobileControls(' + p.id + ', event)" id="editBtn-' + p.id + '">✏️</button>' +
+                    '</div></div>' +
+                    '<div class="stock-controls-panel" id="panel-' + p.id + '">' +
+                    '<button class="stock-btn minus" onclick="modifyStock(' + p.id + ', -1, event)">−</button>' +
+                    '<button class="stock-btn plus" onclick="modifyStock(' + p.id + ', 1, event)">+</button>' +
+                    '<button class="stock-btn zero" onclick="setStockZero(' + p.id + ', event)">⊘</button>' +
+                    '<div class="stock-input-group">' +
+                    '<input type="number" class="stock-manual-input" id="mobile-manual-' + p.id + '" placeholder="' + currentStock + '" min="0">' +
+                    '<button class="stock-set-btn" onclick="setManualStockMobile(' + p.id + ', event)">✓</button>' +
+                    '</div></div>';
+            });
+            
+            $('productList').innerHTML = html;
+            
+            if (totalPages > 1) {
+                let h = '<button class="page-btn" onclick="goPage(' + (state.page - 1) + ')"' + (state.page === 1 ? ' disabled' : '') + '>‹</button>';
+                for (let i = Math.max(1, state.page - 2); i <= Math.min(totalPages, state.page + 2); i++) {
+                    h += '<button class="page-btn' + (i === state.page ? ' active' : '') + '" onclick="goPage(' + i + ')">' + i + '</button>';
+                }
+                h += '<button class="page-btn" onclick="goPage(' + (state.page + 1) + ')"' + (state.page === totalPages ? ' disabled' : '') + '>›</button>';
+                $('pagination').innerHTML = h;
+            } else { $('pagination').innerHTML = ''; }
+            
+            updateModificationCount();
+            
+            // Re-open active mobile panel after render
+            if (activeMobilePanel) {
+                const panel = $('panel-' + activeMobilePanel);
+                const btn = $('editBtn-' + activeMobilePanel);
+                if (panel) panel.classList.add('show');
+                if (btn) btn.classList.add('active');
+            }
+        }
+        
+        function openMikra(codigo) { window.open('https://www.mikra.com.ar/search/?q=' + codigo, '_blank'); }
+        
+        let activeMobilePanel = null;
+        
+        function toggleMobileControls(id, e) {
+            e.stopPropagation();
+            const panel = $('panel-' + id);
+            const btn = $('editBtn-' + id);
+            
+            if (activeMobilePanel && activeMobilePanel !== id) {
+                const oldPanel = $('panel-' + activeMobilePanel);
+                const oldBtn = $('editBtn-' + activeMobilePanel);
+                if (oldPanel) oldPanel.classList.remove('show');
+                if (oldBtn) oldBtn.classList.remove('active');
+            }
+            
+            const isOpen = panel.classList.contains('show');
+            panel.classList.toggle('show');
+            btn.classList.toggle('active');
+            activeMobilePanel = isOpen ? null : id;
+        }
+        
+        function setManualStockMobile(id, e) {
+            e.stopPropagation();
+            const product = PRODUCTS.find(p => p.id === id);
+            if (!product) return;
+            
+            const input = $('mobile-manual-' + id);
+            const value = parseInt(input.value);
+            
+            if (!input.value || isNaN(value) || value < 0) {
+                toast('⚠️ Ingresá una cantidad válida', 'warning');
+                input.focus();
+                return;
+            }
+            
+            state.modifications[id] = {
+                oldStock: product.stock,
+                newStock: value,
+                product: product
+            };
+            
+            if (value === product.stock) {
+                delete state.modifications[id];
+            }
+            
+            input.value = '';
+            render();
+            
+            const diff = value - product.stock;
+            toast((diff >= 0 ? '+' : '') + diff);
+        }
+        
+        function goPage(p) {
+            const max = Math.ceil(state.filtered.length / state.pageSize);
+            if (p < 1 || p > max) return;
+            state.page = p; render();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        
+        function modifyStock(id, delta, e) {
+            e.stopPropagation();
+            const product = PRODUCTS.find(p => p.id === id);
+            if (!product) return;
+            
+            let mod = state.modifications[id];
+            
+            if (!mod) {
+                // Primera modificación
+                mod = {
+                    oldStock: product.stock,
+                    newStock: product.stock + delta,
+                    product: product
+                };
+            } else {
+                // Modificación existente
+                mod.newStock += delta;
+            }
+            
+            // Validar que no sea negativo
+            if (mod.newStock < 0) mod.newStock = 0;
+            
+            // Si volvió al valor original, eliminar la modificación
+            if (mod.newStock === mod.oldStock) {
+                delete state.modifications[id];
+            } else {
+                state.modifications[id] = mod;
+            }
+            
+            render();
+            toast(delta > 0 ? '+' + delta : delta.toString());
+        }
+        
+        function setStockZero(id, e) {
+            e.stopPropagation();
+            const product = PRODUCTS.find(p => p.id === id);
+            if (!product) return;
+            
+            if (!confirm('⚠️ ¿Poner stock en 0 para ' + (product.color || '-') + ' Talle ' + (product.talle || '-') + '?')) {
+                return;
+            }
+            
+            if (product.stock === 0) {
+                toast('Ya está en 0', 'warning');
+                return;
+            }
+            
+            state.modifications[id] = {
+                oldStock: product.stock,
+                newStock: 0,
+                product: product
+            };
+            
+            render();
+            toast('✓ Puesto en 0');
+        }
+        
+        function setManualStock(id, e) {
+            e.stopPropagation();
+            const product = PRODUCTS.find(p => p.id === id);
+            if (!product) return;
+            
+            const input = $('manual-' + id);
+            const value = parseInt(input.value);
+            
+            if (!input.value || isNaN(value) || value < 0) {
+                toast('⚠️ Ingresá una cantidad válida', 'warning');
+                input.focus();
+                return;
+            }
+            
+            // Crear o actualizar modificación
+            state.modifications[id] = {
+                oldStock: product.stock,
+                newStock: value,
+                product: product
+            };
+            
+            // Si el valor es igual al original, eliminar la modificación
+            if (value === product.stock) {
+                delete state.modifications[id];
+            }
+            
+            input.value = '';
+            render();
+            
+            const diff = value - product.stock;
+            toast((diff >= 0 ? '+' : '') + diff);
+        }
+        
+        function updateModificationCount() {
+            const count = Object.keys(state.modifications).length;
+            $('modCount').textContent = count;
+            
+            const hasModifications = count > 0;
+            $('viewBtn').disabled = !hasModifications;
+            $('copyBtn').disabled = !hasModifications;
+            $('clearBtn').disabled = !hasModifications;
+        }
+        
+        function viewModifications() {
+            const mods = Object.values(state.modifications);
+            if (!mods.length) {
+                toast('No hay modificaciones', 'warning');
+                return;
+            }
+            
+            let html = '';
+            mods.forEach(mod => {
+                const p = mod.product;
+                const change = mod.newStock - mod.oldStock;
+                html += '<div class="mod-item">' +
+                    '<div style="display: flex; justify-content: space-between; align-items: start;">' +
+                    '<div style="flex: 1;">' +
+                    '<div class="mod-item-header">' + (p.titulo || p.articulo || '-') + '</div>' +
+                    '<div class="mod-item-detail">SKU: ' + p.codigo + '</div>' +
+                    '<div class="mod-item-detail">' + (p.color || '-') + ' • Talle ' + (p.talle || '-') + '</div>' +
+                    '<div class="mod-item-change">' +
+                    '<span class="mod-old">' + mod.oldStock + '</span>' +
+                    '<span>→</span>' +
+                    '<span class="mod-new">' + mod.newStock + '</span>' +
+                    '<span style="color: var(--text-secondary); margin-left: 8px;">(' + (change >= 0 ? '+' : '') + change + ')</span>' +
+                    '</div></div>' +
+                    '<button onclick="removeModification(' + p.id + ')" style="background: var(--danger); border: none; color: white; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85em; font-weight: 600; margin-left: 12px;">🗑️ Quitar</button>' +
+                    '</div></div>';
+            });
+            
+            $('modalTitle').textContent = 'Modificaciones (' + mods.length + ')';
+            $('modalBody').innerHTML = html;
+            $('modalOverlay').classList.add('show');
+        }
+        
+        function removeModification(productId) {
+            const product = PRODUCTS.find(p => p.id === productId);
+            const productName = product ? (product.color || '-') + ' T:' + (product.talle || '-') : 'este producto';
+            
+            if (!confirm('¿Eliminar modificación de ' + productName + '?')) {
+                return;
+            }
+            
+            delete state.modifications[productId];
+            render();
+            
+            // Actualizar modal si está abierto
+            const modalOpen = $('modalOverlay').classList.contains('show');
+            if (modalOpen) {
+                const remainingMods = Object.values(state.modifications).length;
+                if (remainingMods > 0) {
+                    viewModifications();
+                } else {
+                    closeModal();
+                    toast('Lista vacía', 'warning');
+                }
+            } else {
+                toast('✓ Modificación eliminada');
+            }
+        }
+        
+        function generateWhatsAppText() {
+            const mods = Object.values(state.modifications);
+            if (!mods.length) return '';
+            
+            const grouped = {};
+            mods.forEach(mod => {
+                const p = mod.product;
+                const key = p.titulo || p.articulo || 'Sin nombre';
+                if (!grouped[key]) grouped[key] = [];
+                grouped[key].push(mod);
+            });
+            
+            let text = '📊 *AJUSTE DE STOCK*\n';
+            text += new Date().toLocaleString('es-AR', { 
+                day: '2-digit', 
+                month: '2-digit', 
+                year: 'numeric', 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            }).replace(',', '') + '\n';
+            text += '━━━━━━━━━━━━━━━━━━━━\n\n';
+            
+            Object.keys(grouped).sort().forEach(article => {
+                text += '🔹 *' + article + '*\n';
+                grouped[article].forEach(mod => {
+                    const p = mod.product;
+                    const change = mod.newStock - mod.oldStock;
+                    const arrow = change > 0 ? '⬆️' : change < 0 ? '⬇️' : '➡️';
+                    text += '   ' + arrow + ' SKU: ' + p.codigo + '  ' + (p.color || '-') + ' • T:' + (p.talle || '-') + '   ' + mod.oldStock + ' → *' + mod.newStock + '* (' + (change >= 0 ? '+' : '') + change + ')\n';
+                });
+            });
+            
+            text += '━━━━━━━━━━━━━━━━━━━━\n';
+            text += 'Total modificaciones: *' + mods.length + '*\n\n';
+            
+            text += '━━━━━━━━━━━━━━━━━━━━\n';
+            text += '📋 *RESUMEN PARA EXCEL*\n';
+            text += '━━━━━━━━━━━━━━━━━━━━\n\n';
+            
+            const sortedMods = [...mods].sort((a, b) => {
+                const skuA = a.product.codigo || '';
+                const skuB = b.product.codigo || '';
+                return skuA.localeCompare(skuB);
+            });
+            
+            sortedMods.forEach(mod => {
+                const change = mod.newStock - mod.oldStock;
+                text += mod.product.codigo + '\t' + change + '\n';
+            });
+            
+            return text;
+        }
+        
+        function fallbackCopy(text) {
+            try {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.position = 'fixed';
+                ta.style.left = '-9999px';
+                ta.style.top = '-9999px';
+                document.body.appendChild(ta);
+                ta.focus();
+                ta.select();
+                const ok = document.execCommand('copy');
+                document.body.removeChild(ta);
+                return ok;
+            } catch(e) {
+                return false;
+            }
+        }
+        
+        async function copyText(text) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                try {
+                    await navigator.clipboard.writeText(text);
+                    return true;
+                } catch(e) {
+                    return fallbackCopy(text);
+                }
+            }
+            return fallbackCopy(text);
+        }
+        
+        function copyForWhatsApp() {
+            const mods = Object.values(state.modifications);
+            if (!mods.length) {
+                toast('No hay modificaciones', 'warning');
+                return;
+            }
+            
+            const text = generateWhatsAppText();
+            const preview = text.replace(/\*/g, '');
+            
+            // Intentar copiar, pero siempre mostrar el modal
+            copyText(text).then(ok => {
+                if (ok) toast('✓ Copiado al portapapeles', 'success');
+            });
+            
+            $('modalTitle').textContent = 'Preview WhatsApp';
+            $('modalBody').innerHTML = 
+                '<div class="whatsapp-preview">' + preview + '</div>' +
+                '<div style="margin-top: 12px; padding: 12px; background: var(--bg-input); border-radius: 8px; font-size: 0.75em; color: var(--text-secondary);">' +
+                '💡 El resumen muestra la DIFERENCIA (cambio) separada por TAB - perfecto para pegar en Excel' +
+                '</div>' +
+                '<div style="display: flex; flex-direction: column; gap: 8px; margin-top: 16px;">' +
+                '<button onclick="shareToWhatsApp()" style="width: 100%; background: #25D366; color: white; border: none; padding: 14px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 1em;">💬 Enviar por WhatsApp</button>' +
+                '<button onclick="copyText(generateWhatsAppText()).then(ok => { if(ok) toast(\'✓ Copiado\', \'success\'); else toast(\'No se pudo copiar\', \'error\'); });" style="width: 100%; background: var(--primary); color: white; border: none; padding: 14px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 1em;">📋 Copiar texto</button>' +
+                '</div>';
+            $('modalOverlay').classList.add('show');
+        }
+        
+        function shareToWhatsApp() {
+            const text = generateWhatsAppText();
+            if (!text) return;
+            const encodedText = encodeURIComponent(text);
+            const whatsappUrl = 'https://wa.me/?text=' + encodedText;
+            window.open(whatsappUrl, '_blank');
+        }
+        
+        function openSettings() {
+            $('modalTitle').textContent = '⚙️ Configuración';
+            $('modalBody').innerHTML = 
+                '<div style="padding: 10px;">' +
+                '<div style="margin-bottom: 20px;">' +
+                '<label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--text);">Umbral de Bajo Stock</label>' +
+                '<div style="display: flex; gap: 8px; align-items: center;">' +
+                '<input type="number" id="lowStockInput" value="' + state.lowStockThreshold + '" min="1" max="50" ' +
+                'style="flex: 1; background: var(--bg-input); border: 1px solid var(--border); color: var(--text); padding: 10px; border-radius: 8px; font-size: 1em;">' +
+                '<span style="color: var(--text-secondary); font-size: 0.9em;">unidades</span>' +
+                '</div>' +
+                '<div style="margin-top: 8px; font-size: 0.8em; color: var(--text-secondary);">' +
+                'Productos con stock ≤ este valor se consideran "Bajo Stock"<br>' +
+                'Actual: <strong style="color: var(--warning);">' + state.lowStockThreshold + '</strong> unidades' +
+                '</div>' +
+                '</div>' +
+                '<button onclick="saveLowStockThreshold()" style="width: 100%; background: var(--primary); color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 1em;">✓ Aplicar</button>' +
+                '<div style="margin-top: 12px; padding: 10px; background: var(--bg-input); border-radius: 8px; font-size: 0.75em; color: var(--text-secondary);">' +
+                '💡 Esta configuración es temporal y no se guarda al recargar la página' +
+                '</div>' +
+                '</div>';
+            $('modalOverlay').classList.add('show');
+        }
+        
+        function saveLowStockThreshold() {
+            const input = $('lowStockInput');
+            const value = parseInt(input.value);
+            
+            if (isNaN(value) || value < 1) {
+                toast('⚠️ Ingresá un valor válido (mínimo 1)', 'warning');
+                return;
+            }
+            
+            state.lowStockThreshold = value;
+            closeModal();
+            applyFilters(); // Re-aplicar filtros con el nuevo umbral
+            toast('✓ Umbral actualizado a ' + value + ' unidades', 'success');
+        }
+        
+        function clearModifications() {
+            if (!Object.keys(state.modifications).length) {
+                toast('No hay modificaciones', 'warning');
+                return;
+            }
+            
+            if (!confirm('⚠️ ¿Borrar todas las modificaciones?')) {
+                return;
+            }
+            
+            state.modifications = {};
+            render();
+            toast('✓ Modificaciones borradas', 'success');
+        }
+        
+        function closeModal(event) {
+            if (event && event.target !== $('modalOverlay')) return;
+            $('modalOverlay').classList.remove('show');
+        }
+        
+        function toast(msg, type = '') {
+            const t = $('toast'); 
+            t.textContent = msg; 
+            t.className = 'toast show';
+            if (type) t.classList.add(type);
+            setTimeout(() => t.className = 'toast', 1500);
+        }
+        
+        // EXACTAMENTE LA MISMA FUNCIÓN loadData DEL ARCHIVO QUE FUNCIONA
+        async function loadData() {
+            $('syncDot').classList.add('loading');
+            $('syncDot').classList.remove('error');
+            $('syncStatus').textContent = 'Sincronizando...';
+            $('loadingText').textContent = 'Cargando inventario...';
+            $('loadingError').style.display = 'none';
+            
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 15000);
+            
+            try {
+                const response = await fetch(API_URL, { signal: controller.signal });
+                clearTimeout(timeout);
+                const data = await response.json();
+                
+                if (data.success && data.products && data.products.length > 0) {
+                    PRODUCTS = data.products;
+                    localStorage.setItem('mikra_products', JSON.stringify(PRODUCTS));
+                    localStorage.setItem('mikra_lastSync', new Date().toISOString());
+                    
+                    updateUniqueArticles();
+                    applyFilters();
+                    
+                    $('syncDot').classList.remove('loading', 'error');
+                    $('syncStatus').textContent = 'Sincronizado';
+                    $('syncTime').textContent = '• ' + new Date().toLocaleTimeString();
+                    $('loadingScreen').classList.add('hidden');
+                    
+                    toast('✓ ' + data.count + ' productos');
+                } else { throw new Error('No products'); }
+            } catch (error) {
+                clearTimeout(timeout);
+                $('syncDot').classList.remove('loading');
+                $('syncDot').classList.add('error');
+                $('syncStatus').textContent = 'Error';
+                
+                const cached = localStorage.getItem('mikra_products');
+                if (cached) {
+                    PRODUCTS = JSON.parse(cached);
+                    updateUniqueArticles();
+                    applyFilters();
+                    $('loadingScreen').classList.add('hidden');
+                    $('syncTime').textContent = '• Cache';
+                    toast('⚠️ Usando caché', 'warning');
+                } else {
+                    $('loadingText').textContent = '❌ Error de conexión';
+                    $('loadingError').style.display = 'block';
+                }
+            }
+        }
+        
+        // Event Listeners
+        $('searchInput').addEventListener('input', e => {
+            state.search = e.target.value.trim(); state.searchExact = false; state.color = ''; state.size = '';
+            $('searchClear').classList.toggle('show', state.search.length > 0);
+            showAutocomplete(state.search); applyFilters();
+        });
+        
+        $('searchInput').addEventListener('focus', () => { if (state.search.length >= 2) showAutocomplete(state.search); });
+        
+        $('autocomplete').addEventListener('click', e => {
+            const item = e.target.closest('.autocomplete-item');
+            if (item) {
+                const name = item.dataset.name;
+                $('searchInput').value = name; state.search = name; state.searchExact = true;
+                $('searchClear').classList.add('show'); $('autocomplete').classList.remove('show'); applyFilters();
+            }
+        });
+        
+        document.addEventListener('click', e => { if (!e.target.closest('.search-container')) $('autocomplete').classList.remove('show'); });
+        
+        document.querySelectorAll('[data-stock]').forEach(el => {
+            el.addEventListener('click', () => {
+                document.querySelectorAll('[data-stock]').forEach(e => e.classList.remove('active'));
+                el.classList.add('active'); state.stock = el.dataset.stock; applyFilters();
+            });
+        });
+        
+        $('colorOptions').addEventListener('click', e => {
+            const opt = e.target.closest('[data-color]'); if (!opt) return;
+            state.color = opt.dataset.color; applyFilters();
+        });
+        
+        $('sizeOptions').addEventListener('click', e => {
+            const opt = e.target.closest('[data-size]'); if (!opt) return;
+            state.size = opt.dataset.size; applyFilters();
+        });
+        
+        // Inicializar
+        loadData();
+    </script>
+</body>
+</html>
