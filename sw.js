@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mikra-stock-v1';
+const CACHE_NAME = 'mikra-stock-v2';
 
 const PRECACHE_URLS = [
   './',
@@ -8,7 +8,6 @@ const PRECACHE_URLS = [
   './icon-512.png'
 ];
 
-// INSTALL
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
@@ -17,7 +16,6 @@ self.addEventListener('install', event => {
   );
 });
 
-// ACTIVATE - limpia cachés viejos
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
@@ -26,11 +24,10 @@ self.addEventListener('activate', event => {
   );
 });
 
-// FETCH
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // API de Google Apps Script → siempre red, nunca caché
+  // API → siempre red
   if (url.hostname.includes('script.google.com') || url.hostname.includes('script.googleusercontent.com')) {
     event.respondWith(
       fetch(event.request).catch(() =>
@@ -42,7 +39,7 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Todo lo demás → Stale While Revalidate (caché rápido + actualiza en background)
+  // Todo lo demás → Stale While Revalidate
   event.respondWith(
     caches.match(event.request).then(cached => {
       const fetchPromise = fetch(event.request).then(response => {
@@ -52,7 +49,6 @@ self.addEventListener('fetch', event => {
         }
         return response;
       }).catch(() => cached);
-
       return cached || fetchPromise;
     })
   );
