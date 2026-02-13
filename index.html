@@ -564,6 +564,23 @@
         
         function $(id) { return document.getElementById(id); }
         
+        // === PERSISTENCIA DE MODIFICACIONES ===
+        function saveModifications() {
+            try {
+                localStorage.setItem('mikra_modifications', JSON.stringify(state.modifications));
+            } catch(e) {}
+        }
+        
+        function loadModifications() {
+            try {
+                const saved = localStorage.getItem('mikra_modifications');
+                if (saved) {
+                    state.modifications = JSON.parse(saved);
+                }
+            } catch(e) {}
+        }
+        // === FIN PERSISTENCIA ===
+        
         function toggleFilters() { $('filtersCollapse').classList.toggle('open'); }
         
         function toggleLocationSearch() {
@@ -840,6 +857,7 @@
                 delete state.modifications[id];
             }
             
+            saveModifications();
             input.value = '';
             render();
             
@@ -883,6 +901,7 @@
                 state.modifications[id] = mod;
             }
             
+            saveModifications();
             render();
             toast(delta > 0 ? '+' + delta : delta.toString());
         }
@@ -907,6 +926,7 @@
                 product: product
             };
             
+            saveModifications();
             render();
             toast('✓ Puesto en 0');
         }
@@ -937,6 +957,7 @@
                 delete state.modifications[id];
             }
             
+            saveModifications();
             input.value = '';
             render();
             
@@ -1181,6 +1202,7 @@
             }
             
             state.modifications = {};
+            saveModifications();
             render();
             toast('✓ Modificaciones borradas', 'success');
         }
@@ -1288,6 +1310,7 @@
         });
         
         // Inicializar
+        loadModifications();
         loadData();
     </script>
     <script>
