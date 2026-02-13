@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mikra-stock-v2';
+const CACHE_NAME = 'mikra-stock-v6';
 
 const PRECACHE_URLS = [
   './',
@@ -27,7 +27,6 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // API → siempre red
   if (url.hostname.includes('script.google.com') || url.hostname.includes('script.googleusercontent.com')) {
     event.respondWith(
       fetch(event.request).catch(() =>
@@ -39,7 +38,22 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Todo lo demás → Stale While Revalidate
+  if (url.hostname.includes('mlstatic.com')) {
+    event.respondWith(
+      caches.match(event.request).then(cached => {
+        if (cached) return cached;
+        return fetch(event.request).then(response => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+          }
+          return response;
+        }).catch(() => new Response('', { status: 404 }));
+      })
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then(cached => {
       const fetchPromise = fetch(event.request).then(response => {
