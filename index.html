@@ -1062,6 +1062,7 @@
     </div>
 
     <div class="article-edit-bar" id="articleEditBar">
+        <button onclick="articleCloseEditBar()" style="position:absolute;top:4px;right:8px;background:none;border:none;color:var(--text-secondary);font-size:1.3em;cursor:pointer;padding:4px 8px;line-height:1;">✕</button>
         <div class="edit-bar-top" id="articleEditLabel">—</div>
         <div class="edit-bar-controls">
             <button class="stock-btn minus" onclick="articleModify(-1)">−</button>
@@ -2250,9 +2251,18 @@
                     html += '<img class="article-color-img" src="' + colorImgUrl + '" onclick="showImgModal(\'' + prods[0].codigo + '\',' + prods[0].id + ')" onerror="this.remove()">';
                 }
                 
-                // Sizes grid
+                // Sizes grid - iterate ALL sizes so columns align across colors
+                const sizeMap = {};
+                prods.forEach(p => { sizeMap[p.talle || '-'] = p; });
+                
                 html += '<div class="article-sizes-grid">';
-                prods.forEach(p => {
+                sizesArr.forEach(size => {
+                    const p = sizeMap[size];
+                    if (!p) {
+                        // Placeholder for missing size — invisible but keeps alignment
+                        html += '<div class="article-size-cell" style="visibility:hidden;"><div class="asc-size">' + size + '</div><div class="asc-stock">0</div></div>';
+                        return;
+                    }
                     const mod = state.modifications[p.codigo];
                     const isModified = !!mod;
                     const currentStock = isModified ? mod.newStock : p.stock;
@@ -2338,6 +2348,12 @@
             
             articleUpdateEditBar();
             haptic('light');
+        }
+        
+        function articleCloseEditBar() {
+            articleSelectedId = null;
+            document.querySelectorAll('.article-size-cell.selected').forEach(c => c.classList.remove('selected'));
+            $('articleEditBar').classList.remove('show');
         }
         
         function articleUpdateEditBar() {
