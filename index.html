@@ -609,6 +609,11 @@
             background: var(--danger); color: white;
         }
         .action-btn.clear:hover:not(:disabled) { background: #e65e5e; }
+
+        .action-btn.ecomm {
+            background: #7c3aed; color: white;
+        }
+        .action-btn.ecomm:hover:not(:disabled) { background: #6d28d9; }
         
         /* MODAL */
         .modal-overlay {
@@ -1090,6 +1095,9 @@
             </button>
             <button class="action-btn clear" onclick="clearModifications()" id="clearBtn" disabled>
                 🗑️ Limpiar
+            </button>
+            <button class="action-btn ecomm" onclick="pedirPinEcomm()" id="ecommBtn" disabled>
+                📦 → Ecomm
             </button>
         </div>
       </div>
@@ -2471,6 +2479,7 @@
             $('viewBtn').disabled = !hasModifications;
             $('copyBtn').disabled = !hasModifications;
             $('clearBtn').disabled = !hasModifications;
+            $('ecommBtn').disabled = !hasModifications;
             
             // #7 Show/hide modified filter chip
             $('modifiedChip').style.display = hasModifications ? '' : 'none';
@@ -3141,6 +3150,179 @@
             })
             .catch(err => console.log('SW error:', err));
     }
+    </script>
+
+    <!-- MODAL PIN ECOMM -->
+    <div class="modal-overlay" id="pinEcommOverlay" onclick="closePinEcomm(event)" style="z-index:2000;">
+        <div class="modal" onclick="event.stopPropagation()" style="max-width:300px;text-align:center;">
+            <div class="modal-header"><div class="modal-title">🔒 Impactar en Ecomm</div></div>
+            <div class="modal-body">
+                <div style="font-size:0.85em;opacity:0.6;margin-bottom:14px;">Ingresá el PIN para continuar</div>
+                <input id="pinEcommInput" type="password" inputmode="numeric" maxlength="6"
+                    style="width:100%;padding:14px;font-size:1.6em;text-align:center;letter-spacing:10px;background:var(--bg-input);border:2px solid var(--border);border-radius:10px;color:var(--text);outline:none;box-sizing:border-box;"
+                    placeholder="••••" onkeydown="if(event.key==='Enter') confirmarPinEcomm()">
+                <div id="pinEcommError" style="color:var(--danger);font-size:0.82em;margin-top:6px;min-height:18px;"></div>
+                <div style="display:flex;gap:8px;margin-top:14px;">
+                    <button onclick="closePinEcomm()" style="flex:1;padding:10px;background:var(--danger);color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;">Cancelar</button>
+                    <button onclick="confirmarPinEcomm()" style="flex:1;padding:10px;background:var(--success);color:#1a2744;border:none;border-radius:8px;font-weight:700;cursor:pointer;">✓ Confirmar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL PROGRESO ECOMM -->
+    <div class="modal-overlay" id="ecommProgressOverlay" style="z-index:2000;">
+        <div class="modal" onclick="event.stopPropagation()" style="max-width:440px;width:95%;">
+            <div class="modal-header"><div class="modal-title" id="ecommProgressTitle">📦 Impactando en Ecomm</div></div>
+            <div class="modal-body">
+                <div id="ecommBarWrap" style="margin-bottom:10px;display:block;">
+                    <div style="display:flex;justify-content:space-between;font-size:0.8em;opacity:0.6;margin-bottom:4px;">
+                        <span>Procesando...</span><span id="ecommProgressText">0 / 0</span>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.1);border-radius:4px;height:6px;overflow:hidden;">
+                        <div id="ecommProgressFill" style="height:100%;width:2%;background:#7c3aed;border-radius:4px;transition:width 0.3s;"></div>
+                    </div>
+                </div>
+                <div id="ecommProgressContent" style="max-height:50vh;overflow-y:auto;margin:8px 0;"></div>
+                <div id="ecommProgressSummary" style="font-weight:800;font-size:1em;margin-top:8px;text-align:center;padding:8px;border-radius:8px;"></div>
+                <button onclick="cerrarEcommProgress()" style="width:100%;margin-top:12px;padding:10px;background:var(--bg-input);color:var(--text);border:1px solid var(--border);border-radius:8px;font-weight:700;cursor:pointer;">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ECOMM_WORKER = 'https://ecomm-token-proxy.rafaelassir.workers.dev';
+        const ECOMM_PIN = '9148';
+        const ECOMM_LOTE = 20;
+
+        function pedirPinEcomm() {
+            const mods = Object.values(state.modifications);
+            if (!mods.length) { toast('No hay modificaciones', 'warning'); return; }
+            $('pinEcommInput').value = ''; $('pinEcommError').textContent = '';
+            $('pinEcommOverlay').classList.add('show');
+            setTimeout(() => $('pinEcommInput').focus(), 150);
+        }
+        function closePinEcomm(e) {
+            if (e && e.target !== $('pinEcommOverlay')) return;
+            $('pinEcommOverlay').classList.remove('show');
+            $('pinEcommInput').value = ''; $('pinEcommError').textContent = '';
+        }
+        function confirmarPinEcomm() {
+            if ($('pinEcommInput').value.trim() !== ECOMM_PIN) {
+                $('pinEcommError').textContent = '❌ PIN incorrecto';
+                $('pinEcommInput').value = ''; $('pinEcommInput').focus(); return;
+            }
+            $('pinEcommOverlay').classList.remove('show');
+            impactarEnEcomm();
+        }
+        function cerrarEcommProgress() { $('ecommProgressOverlay').classList.remove('show'); }
+
+        async function impactarEnEcomm() {
+            const mods = Object.values(state.modifications);
+            if (!mods.length) return;
+
+            // Calcular qty real para Ecomm por cada mod
+            // Agregar: qty negativo (suma al stock de Ecomm)
+            // Descontar: qty positivo (resta al stock de Ecomm)
+            const items = mods.map(mod => {
+                const delta = mod.newStock - mod.oldStock;
+                let ecommQty;
+                if (delta > 0) {
+                    // Solo la cantidad física agregada — ignorar compensación de negativos
+                    ecommQty = -(mod.newStock - Math.max(0, mod.oldStock));
+                } else {
+                    // Descuento normal
+                    ecommQty = Math.abs(delta);
+                }
+                return { sku: mod.product.codigo, qty: ecommQty, mod };
+            }).filter(it => it.qty !== 0);
+
+            if (!items.length) { toast('Sin cambios para enviar a Ecomm', 'warning'); return; }
+
+            // Mostrar placeholders
+            $('ecommProgressContent').innerHTML = items.map((it, i) => {
+                const p = it.mod.product;
+                const titulo = p.titulo || p.articulo || '';
+                const sub = (p.color ? ` · ${p.color}` : '') + (p.talle ? ` T.${p.talle}` : '');
+                const accion = it.qty < 0 ? `+${Math.abs(it.qty)} uds` : `-${it.qty} uds`;
+                return `<div id="ecomm_item_${i}" style="background:rgba(255,255,255,0.04);border-radius:8px;padding:8px 12px;margin-bottom:6px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <div>
+                            <div style="font-size:0.88em;font-weight:700;">⏳ ${titulo}${sub}</div>
+                            <div style="font-size:0.75em;opacity:0.5;margin-top:2px;">SKU ${p.codigo} · ${accion}</div>
+                        </div>
+                        <div style="opacity:0.3;font-size:0.8em;">...</div>
+                    </div>
+                </div>`;
+            }).join('');
+
+            $('ecommProgressFill').style.width = '2%';
+            $('ecommProgressText').textContent = `0 / ${items.length}`;
+            $('ecommProgressSummary').innerHTML = '';
+            $('ecommBarWrap') && ($('ecommBarWrap').style.display = 'block');
+            $('ecommProgressOverlay').classList.add('show');
+
+            const resMap = {};
+            const lotes = [];
+            for (let i = 0; i < items.length; i += ECOMM_LOTE) lotes.push(items.slice(i, i + ECOMM_LOTE));
+
+            let completados = 0;
+            await Promise.all(lotes.map(async (lote) => {
+                try {
+                    const data = await fetch(`${ECOMM_WORKER}/bulk-update-stock`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(lote.map(it => ({ sku: it.sku, qty: it.qty })))
+                    }).then(r => r.json());
+                    (data.results || []).forEach(r => { resMap[String(r.sku)] = r; });
+                } catch(e) {
+                    lote.forEach(it => { resMap[String(it.sku)] = { sku: it.sku, error: 'Error de conexión' }; });
+                }
+                completados += lote.length;
+                $('ecommProgressFill').style.width = Math.round(completados / items.length * 100) + '%';
+                $('ecommProgressText').textContent = `${completados} / ${items.length}`;
+            }));
+
+            let errores = 0, procesados = 0;
+            items.forEach((it, i) => {
+                const p = it.mod.product;
+                const titulo = p.titulo || p.articulo || '';
+                const sub = (p.color ? ` · ${p.color}` : '') + (p.talle ? ` T.${p.talle}` : '');
+                const res = resMap[String(it.sku)];
+                const el = document.getElementById(`ecomm_item_${i}`);
+                if (!res || res.error) {
+                    errores++;
+                    el.style.background = 'rgba(239,68,68,0.1)';
+                    el.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;">
+                        <div>
+                            <div style="font-size:0.88em;font-weight:700;">❌ ${titulo}${sub}</div>
+                            <div style="font-size:0.75em;color:#ef4444;margin-top:2px;">SKU ${p.codigo} — ${res?.error || 'Sin respuesta'}</div>
+                        </div>
+                    </div>`;
+                } else {
+                    procesados++;
+                    const accion = it.qty < 0 ? `+${Math.abs(it.qty)}` : `-${it.qty}`;
+                    const col = it.qty < 0 ? '#22c55e' : '#ef4444';
+                    el.style.background = 'rgba(34,197,94,0.07)';
+                    el.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;">
+                        <div>
+                            <div style="font-size:0.88em;font-weight:700;">✅ ${titulo}${sub}</div>
+                            <div style="font-size:0.75em;opacity:0.5;margin-top:2px;">SKU ${p.codigo} · <span style="color:${col};font-weight:700;">${accion} uds</span></div>
+                        </div>
+                        <div style="text-align:right;white-space:nowrap;padding-left:8px;">
+                            <span style="font-size:0.82em;opacity:0.45;">${res.stock_anterior} →</span>
+                            <span style="font-size:1em;color:#22c55e;font-weight:800;"> ${res.stock_nuevo}</span>
+                        </div>
+                    </div>`;
+                }
+            });
+
+            $('ecommBarWrap').style.display = 'none';
+            $('ecommProgressSummary').style.background = errores===0 ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)';
+            $('ecommProgressSummary').innerHTML = errores===0
+                ? `<span style="color:#22c55e;">✅ ${procesados} items actualizados en Ecomm</span>`
+                : `<span style="color:#ef4444;">⚠️ ${errores} error(es) — Revisá los marcados</span>`;
+        }
     </script>
 </body>
 </html>
